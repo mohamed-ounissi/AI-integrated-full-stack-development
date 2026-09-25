@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useChat } from '@ai-sdk/react';
+import { createChatTransport } from '@/api/chat';
 
 export function ChatPage() {
   const [input, setInput] = useState('');
-  const { messages, sendMessage, status } = useChat();
+  const { messages, sendMessage, status } = useChat({ transport: createChatTransport() });
 
   return (
     <div className="flex h-screen flex-col items-center bg-zinc-50 px-4 py-8 dark:bg-black">
@@ -19,9 +20,19 @@ export function ChatPage() {
                 : 'self-start rounded-2xl bg-zinc-200 px-4 py-2 text-black dark:bg-zinc-800 dark:text-white'
             }
           >
-            {message.parts.map((part, i) =>
-              part.type === 'text' ? <span key={`${message.id}-${i}`}>{part.text}</span> : null,
-            )}
+            {message.parts.map((part, i) => {
+              if (part.type === 'text') {
+                return <span key={`${message.id}-${i}`}>{part.text}</span>;
+              }
+              if (part.type === 'tool-lookupTicket' && part.state === 'output-available') {
+                return (
+                  <div key={`${message.id}-${i}`} className="mb-1 text-xs italic text-zinc-500">
+                    🔧 looked up ticket → {JSON.stringify(part.output)}
+                  </div>
+                );
+              }
+              return null;
+            })}
           </div>
         ))}
         {status === 'submitted' && <div className="self-start text-sm text-zinc-500">Thinking…</div>}

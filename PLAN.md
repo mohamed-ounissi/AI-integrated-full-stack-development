@@ -83,7 +83,7 @@ Each milestone has a **Definition of Done**. Don't start the next milestone unti
 - **DoD:** ✅ A filled-in comparison table. ✅ An eval script that prints a pass/fail count for both providers.
 
 ### M5 — Final PoC polish + documentation + demo
-- **Build:** Tie the pieces together into one coherent app (chat + tool calling + RAG + structured summaries). Write up `docs/architecture.md`, `docs/comparison.md` (from M4), `docs/evaluation.md` (from M4), limitations, and next steps. Record a 3–5 min demo video.
+- **Build:** Tie the pieces together into one coherent app (chat + tool calling + RAG + structured summaries). `docs/architecture.md` is a living log kept updated since M0 — just finish it (limitations, next steps) rather than starting it here. Write up `docs/comparison.md` and `docs/evaluation.md` (from M4). Record a 3–5 min demo video.
 - **DoD:** ✅ App runs end-to-end from a clean clone + `README.md` setup steps. ✅ Docs and demo video ready to send to your manager.
 
 ### M6 — Stretch, personal PC only: local models
