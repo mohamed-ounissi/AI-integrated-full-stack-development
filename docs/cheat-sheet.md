@@ -120,7 +120,73 @@ curl -s -N -X POST http://localhost:3000/api/chat \
 ```
 Full source: [`apps/frontend/src/app/api/chat/route.ts`](../apps/frontend/src/app/api/chat/route.ts), [`apps/frontend/src/features/chat/chat-page.tsx`](../apps/frontend/src/features/chat/chat-page.tsx).
 
-## NestJS + tool calling + structured output — *(added in M2)*
+## NestJS + tool calling + structured output — M2
+
+Packages added: `@nestjs/config` `@nestjs/mongoose` `mongoose` `ai` `@ai-sdk/google` `zod` (same `ai@6` as M1 — same gotcha applies: check `node_modules/ai/dist/index.d.ts` before trusting a docs snippet).
+
+**Tool calling (`ai@6`, field is `inputSchema`, not the older `parameters`):**
+```ts
+import { streamText, convertToModelMessages, tool, stepCountIs, type UIMessage } from 'ai';
+import { z } from 'zod';
+
+const result = streamText({
+  model: google('gemini-3.6-flash'),
+  messages: await convertToModelMessages(messages),
+  stopWhen: stepCountIs(5), // lets the model take the tool result and produce a final answer (replaces old `maxSteps`)
+  tools: {
+    lookupTicket: tool({
+      description: 'Look up a support ticket by its numeric ID for real, current status.',
+      inputSchema: z.object({ id: z.number() }),
+      execute: async ({ id }) => (await ticketsService.findById(id)) ?? { error: `No ticket ${id}` },
+    }),
+  },
+});
+```
+
+**Bridging a Fetch `Response` (what `streamText`'s helper returns) into an Express/Nest response** — Nest's default HTTP adapter is Express, which doesn't understand Web `Response`/`ReadableStream` objects natively:
+```ts
+import { Readable } from 'node:stream';
+
+@Post()
+async chat(@Body() body: { messages: UIMessage[] }, @Res() res: Response) {
+  const result = streamText({ /* ...as above... */ });
+  const webResponse = result.toUIMessageStreamResponse();
+
+  res.status(webResponse.status);
+  webResponse.headers.forEach((value, key) => res.setHeader(key, value));
+  if (webResponse.body) Readable.fromWeb(webResponse.body as never).pipe(res);
+  else res.end();
+}
+```
+
+**Structured output (`generateObject`):**
+```ts
+import { generateObject } from 'ai';
+import { z } from 'zod';
+
+const ticketSummarySchema = z.object({
+  title: z.string(),
+  keyPoints: z.array(z.string()),
+  suggestedAction: z.string(),
+});
+
+const { object } = await generateObject({
+  model: google('gemini-3.6-flash'),
+  schema: ticketSummarySchema,
+  prompt: `Summarize this support ticket for an agent:\n${JSON.stringify(ticket)}`,
+});
+// object is guaranteed to match the schema shape — no manual JSON.parse/validate needed
+```
+
+**Frontend calling a separate backend instead of its own API route:**
+```ts
+// src/api/chat.ts
+import { DefaultChatTransport } from 'ai';
+const transport = new DefaultChatTransport({ api: `${BACKEND_URL}/chat` });
+useChat({ transport });
+```
+
+Full source: [`apps/backend/src/chat/chat.controller.ts`](../apps/backend/src/chat/chat.controller.ts), [`apps/backend/src/tickets/tickets.service.ts`](../apps/backend/src/tickets/tickets.service.ts), [`apps/frontend/src/api/chat.ts`](../apps/frontend/src/api/chat.ts).
 
 ## Embeddings + vector search + RAG — *(added in M3)*
 
