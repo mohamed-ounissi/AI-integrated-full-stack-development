@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import type { GoogleGenerativeAIProvider } from '@ai-sdk/google';
 import { GOOGLE_PROVIDER } from '../ai/ai.module';
 import { Ticket, TicketDocument } from './schema/ticket.schema';
@@ -28,12 +28,12 @@ export class TicketsService {
       throw new NotFoundException(`Ticket ${id} not found`);
     }
 
-    const { object } = await generateObject({
+    const { output } = await generateText({
       model: this.google('gemini-3.6-flash'),
-      schema: ticketSummarySchema,
+      output: Output.object({ schema: ticketSummarySchema }),
       prompt: `Summarize this support ticket for an agent who has not seen it yet:\n${JSON.stringify(ticket)}`,
     });
 
-    return object;
+    return output;
   }
 }
