@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@ai-sdk/google": "^3.0.128",
+    "ai": "^6.0.293",
     "mongodb": "^6.10.0"
   }
 }

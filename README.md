@@ -22,4 +22,4 @@ scripts/          # Standalone check/utility scripts (M0 onward)
 
 ## Status
 
-M0 and M1 and M2 done. See docs/architecture.md for what that means and what's next.
+M0, M1, M2, M3 done. See docs/architecture.md for what that means and what's next.

@@ -6,12 +6,14 @@ import type { GoogleGenerativeAIProvider } from '@ai-sdk/google';
 import { z } from 'zod';
 import { GOOGLE_PROVIDER } from '../ai/ai.module';
 import { TicketsService } from '../tickets/tickets.service';
+import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 
 @Controller('chat')
 export class ChatController {
   constructor(
     @Inject(GOOGLE_PROVIDER) private readonly google: GoogleGenerativeAIProvider,
     private readonly ticketsService: TicketsService,
+    private readonly knowledgeBaseService: KnowledgeBaseService,
   ) {}
 
   @Post()
@@ -28,6 +30,15 @@ export class ChatController {
           execute: async ({ id }) => {
             const ticket = await this.ticketsService.findById(id);
             return ticket ?? { error: `No ticket found with id ${id}` };
+          },
+        }),
+        searchKnowledgeBase: tool({
+          description:
+            'Search the AutoCare knowledge base (diagnostic-code explanations, service policies, FAQs) for real, grounded answers. Always use this instead of answering general questions from memory. When you use a result, mention which source doc it came from.',
+          inputSchema: z.object({ query: z.string().describe('What to search for, in plain language') }),
+          execute: async ({ query }) => {
+            const matches = await this.knowledgeBaseService.search(query);
+            return matches.length > 0 ? matches : { error: 'No relevant knowledge-base entries found' };
           },
         }),
       },

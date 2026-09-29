@@ -31,6 +31,16 @@ export function ChatPage() {
                   </div>
                 );
               }
+              if (part.type === 'tool-searchKnowledgeBase' && part.state === 'output-available') {
+                const sources = Array.isArray(part.output)
+                  ? [...new Set(part.output.map((m) => m.sourceDoc))].join(', ')
+                  : 'no match';
+                return (
+                  <div key={`${message.id}-${i}`} className="mb-1 text-xs italic text-zinc-500">
+                    🔍 searched knowledge base → {sources}
+                  </div>
+                );
+              }
               return null;
             })}
           </div>
