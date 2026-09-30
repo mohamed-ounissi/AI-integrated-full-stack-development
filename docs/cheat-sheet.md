@@ -1,6 +1,6 @@
 # AI Integration Cheat Sheet
 
-Running reference of the commands and code snippets from this project, kept short enough to paste into Slack or hand to a colleague who wants to add AI to their own project. One section per milestone — keep appending as you go, don't rewrite what's already here.
+Running reference of the commands and code snippets from this project, kept short enough to copy into your own project if you want to add AI to a TypeScript stack. One section per milestone.
 
 ## Setup
 
@@ -159,9 +159,11 @@ async chat(@Body() body: { messages: UIMessage[] }, @Res() res: Response) {
 }
 ```
 
-**Structured output (`generateObject`):**
+**Structured output:**
+
+`generateObject` is deprecated in the `ai@6` line actually installed here — it still runs but logs a deprecation warning. The replacement is `generateText` with an `Output.object(...)` spec:
 ```ts
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
 
 const ticketSummarySchema = z.object({
@@ -170,12 +172,12 @@ const ticketSummarySchema = z.object({
   suggestedAction: z.string(),
 });
 
-const { object } = await generateObject({
+const { output } = await generateText({
   model: google('gemini-3.6-flash'),
-  schema: ticketSummarySchema,
+  output: Output.object({ schema: ticketSummarySchema }),
   prompt: `Summarize this support ticket for an agent:\n${JSON.stringify(ticket)}`,
 });
-// object is guaranteed to match the schema shape — no manual JSON.parse/validate needed
+// output is guaranteed to match the schema shape — no manual JSON.parse/validate needed
 ```
 
 **Frontend calling a separate backend instead of its own API route:**
@@ -188,6 +190,102 @@ useChat({ transport });
 
 Full source: [`apps/backend/src/chat/chat.controller.ts`](../apps/backend/src/chat/chat.controller.ts), [`apps/backend/src/tickets/tickets.service.ts`](../apps/backend/src/tickets/tickets.service.ts), [`apps/frontend/src/api/chat.ts`](../apps/frontend/src/api/chat.ts).
 
-## Embeddings + vector search + RAG — *(added in M3)*
+## Embeddings + vector search + RAG — M3
 
-## Provider comparison + evaluation — *(added in M4)*
+Embedding model: Gemini `gemini-embedding-001` via `@ai-sdk/google` — chosen over Voyage AI specifically to avoid a second API key/account/SDK for a ~4% (vendor-reported) quality difference; free via the same Google AI Studio key already in use. Output dimensions are configurable (Matryoshka: 3072/1536/768) — used 768 here to keep the vector index small.
+
+**Embedding documents vs. embedding a search query use different `taskType`s** — this is a real quality detail, not boilerplate: `RETRIEVAL_DOCUMENT` when storing knowledge-base chunks, `RETRIEVAL_QUERY` when embedding what the user asked, so the two ends of the search are optimized for their asymmetric roles.
+
+```ts
+import { embedMany, embed } from 'ai';
+
+// ingesting docs
+const { embeddings } = await embedMany({
+  model: google.textEmbeddingModel('gemini-embedding-001'),
+  values: chunks.map((c) => c.text),
+  providerOptions: { google: { outputDimensionality: 768, taskType: 'RETRIEVAL_DOCUMENT' } },
+});
+
+// embedding the user's question at query time
+const { embedding } = await embed({
+  model: google.textEmbeddingModel('gemini-embedding-001'),
+  value: query,
+  providerOptions: { google: { outputDimensionality: 768, taskType: 'RETRIEVAL_QUERY' } },
+});
+```
+
+**Creating the Atlas Vector Search index programmatically** (so setup is one script, not a manual Atlas UI step) — idempotent, safe to re-run:
+```ts
+const existing = await collection.listSearchIndexes('kb_vector_index').toArray();
+if (existing.length === 0) {
+  await collection.createSearchIndex({
+    name: 'kb_vector_index',
+    type: 'vectorSearch',
+    definition: { fields: [{ type: 'vector', path: 'embedding', numDimensions: 768, similarity: 'cosine' }] },
+  });
+}
+```
+Index building is async — right after creation, `listSearchIndexes(...)` returns `queryable: false` for a bit (typically under 2 minutes) before it's ready.
+
+**Querying it** (Mongoose's `.aggregate()` passes `$vectorSearch` straight through to MongoDB):
+```ts
+const results = await model.aggregate([
+  { $vectorSearch: { index: 'kb_vector_index', path: 'embedding', queryVector: embedding, numCandidates: 100, limit: 3 } },
+  { $project: { _id: 0, sourceDoc: 1, title: 1, text: 1, score: { $meta: 'vectorSearchScore' } } },
+]);
+```
+
+**RAG as a tool, not always-on context injection:** consistent with M2's `lookupTicket`, retrieval is exposed as a second tool (`searchKnowledgeBase`) the model calls when it decides it's relevant, rather than always stuffing search results into every prompt. Same mental model as tool calling generally — the backend exposes capabilities, the model decides when to use them.
+
+**Gotcha:** a folder-level `README.md` describing the knowledge-base directory got swept up by a naive `*.md` glob during ingestion and embedded as if it were real content. Filter it out explicitly (or keep docs and folder-notes in physically separate directories).
+
+Full source: [`scripts/ingest-knowledge-base.js`](../scripts/ingest-knowledge-base.js), [`apps/backend/src/knowledge-base/knowledge-base.service.ts`](../apps/backend/src/knowledge-base/knowledge-base.service.ts).
+
+## Multiple providers + evaluation — M4
+
+Packages: `@ai-sdk/groq`, `@ai-sdk/openai-compatible` (for OpenRouter — or anything else with an OpenAI-shaped API, including LM Studio locally).
+
+**Every provider returns the same `LanguageModel`, so switching is one registry entry:**
+```ts
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGroq } from '@ai-sdk/groq';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+
+const models = {
+  gemini: createGoogleGenerativeAI({ apiKey: GEMINI_API_KEY })('gemini-3.6-flash'),
+  groq: createGroq({ apiKey: GROQ_API_KEY })('openai/gpt-oss-120b'),
+  openrouter: createOpenAICompatible({
+    name: 'openrouter',
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: OPENROUTER_API_KEY,
+  })('qwen/qwen3.8-27b:free'),
+  // local: createOpenAICompatible({ name: 'lmstudio', baseURL: 'http://localhost:1234/v1' })('<model>'),
+};
+
+streamText({ model: models[provider], system, messages, tools, stopWhen: stepCountIs(5) });
+```
+
+**Passing a per-request option from `useChat`** (here: which provider to use):
+```ts
+chat.sendMessage({ text }, { body: { provider } });
+// arrives in the backend as req.body.provider, next to req.body.messages
+```
+
+**Find a model that's actually live before hardcoding it** — model IDs and free-tier availability change constantly:
+```bash
+curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"
+curl -s https://openrouter.ai/api/v1/models   # filter ids ending in ":free" that list "tools" in supported_parameters
+```
+
+**Free-tier limits measured here (Sept 2026)** — the thing that actually decides what works:
+- Gemini `gemini-3.6-flash`: 5 requests/min, 20/day. A tool-using answer costs 2+ requests → ~10 questions/day.
+- Groq `openai/gpt-oss-120b`: no throttling across four eval runs, ~1.4 s per answer.
+- OpenRouter `:free` models: shared upstream pools — some 429/503 at random; test a few.
+
+**A minimal eval is ~150 lines:** send fixed questions to your real endpoint, read the stream, check required keywords and which tool was called, time it. Normalize the text first — models emit narrow no-break spaces (`4 hours`), non-breaking hyphens (`24‑month`) and subscripts (`O₂`) that break plain `includes()` checks:
+```js
+const normalize = (t) =>
+  t.replace(/[‐-―]/g, '-').replace(/[    ]/g, ' ').replace(/₂/g, '2').toLowerCase();
+```
+
+Full source: [`apps/backend/src/ai/ai.module.ts`](../apps/backend/src/ai/ai.module.ts), [`scripts/eval.js`](../scripts/eval.js).

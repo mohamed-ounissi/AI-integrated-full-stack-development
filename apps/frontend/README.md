@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AutoCare Copilot — frontend
 
-## Getting Started
+Next.js UI for support agents: a ticket panel with one-click structured summaries, and a streaming chat that shows which tools the model called and which knowledge-base docs it used.
 
-First, run the development server:
+## Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Expects the backend on `http://localhost:3001`. To point elsewhere, set `NEXT_PUBLIC_BACKEND_URL` in `.env.local` (see [`.env.local.example`](.env.local.example)). No API keys live here — all AI calls go through the backend.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+  app/                  layout + page (composes the two features)
+  api/                  client.ts (base URL + fetch helper), chat.ts, tickets.ts
+  features/
+    chat/               useCopilotChat hook, chat panel, message rendering, model picker
+    tickets/            ticket list, details, structured summary card
+```
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Answers are rendered as markdown (`react-markdown` + `remark-gfm`, styled with `@tailwindcss/typography`). Tool activity comes straight from the AI SDK message parts (`tool-lookupTicket`, `tool-searchKnowledgeBase`).

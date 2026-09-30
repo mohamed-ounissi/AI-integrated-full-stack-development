@@ -5,10 +5,12 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { TicketsModule } from './tickets/tickets.module';
+import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // apps/backend/.env wins if present; otherwise falls back to the repo-root .env shared with scripts/
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -18,6 +20,7 @@ import { TicketsModule } from './tickets/tickets.module';
     }),
     ChatModule,
     TicketsModule,
+    KnowledgeBaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],
