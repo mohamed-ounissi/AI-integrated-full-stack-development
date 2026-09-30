@@ -2,8 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { generateText, Output } from 'ai';
-import type { GoogleGenerativeAIProvider } from '@ai-sdk/google';
-import { GOOGLE_PROVIDER } from '../ai/ai.module';
+import { CHAT_MODELS, defaultChatModel, type ChatModels } from '../ai/ai.module';
 import { Ticket, TicketDocument } from './schema/ticket.schema';
 import { ticketSummarySchema, TicketSummary } from './ticket-summary.schema';
 
@@ -11,7 +10,7 @@ import { ticketSummarySchema, TicketSummary } from './ticket-summary.schema';
 export class TicketsService {
   constructor(
     @InjectModel(Ticket.name) private readonly ticketModel: Model<TicketDocument>,
-    @Inject(GOOGLE_PROVIDER) private readonly google: GoogleGenerativeAIProvider,
+    @Inject(CHAT_MODELS) private readonly chatModels: ChatModels,
   ) {}
 
   findAll() {
@@ -29,9 +28,9 @@ export class TicketsService {
     }
 
     const { output } = await generateText({
-      model: this.google('gemini-3.6-flash'),
+      model: defaultChatModel(this.chatModels).instance,
       output: Output.object({ schema: ticketSummarySchema }),
-      prompt: `Summarize this support ticket for an agent who has not seen it yet:\n${JSON.stringify(ticket)}`,
+      prompt: `Summarize this support ticket for an agent picking it up cold. Key points should say what matters — urgency, how long it has been open, what the customer is waiting on — not restate every field.\n${JSON.stringify(ticket)}`,
     });
 
     return output;
